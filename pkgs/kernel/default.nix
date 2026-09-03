@@ -128,10 +128,20 @@ buildLinux (args
   # interactive refinement pass could only re-enable it if asked — pin the
   # answer as well. LOCALVERSION_AUTO keeps the release at "${modDirVersion}".
   # NR_CPUS: nixpkgs' common config forces 384; the device has 8 CPUs.
+  #
+  # Console: FRAMEBUFFER_CONSOLE defaults to DRM_FBDEV_EMULATION, neither of
+  # which the sm8150 fragment or arm64 defconfig enable explicitly. Without a
+  # boot text console the nabu panel never shows kernel logs (no
+  # simple-framebuffer node in the DTB), so the device boots to a black
+  # screen. Force the fbdev/KMS console stack on (`console=tty0` + fbcon).
   extraConfig = ''
     SPI_MT65XX n
     LOCALVERSION_AUTO n
     NR_CPUS 8
+    # fbcon text console (arm64 defconfig leaves these unset -> n by default)
+    SYSFB y
+    FRAMEBUFFER_CONSOLE y
+    DRM_FBDEV_EMULATION y
   '';
 
   # The sm8150 fork's Kconfig differs from mainline expectations (e.g.

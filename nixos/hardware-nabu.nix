@@ -26,9 +26,13 @@
     "rw"
     "systemd.gpt_auto=no"
     "cryptomgr.notests"
+    # Explicit text console: the nabu DTB has no simple-framebuffer node, so
+    # the kernel must attach fbcon to tty0 to render early boot logs on the
+    # panel (otherwise fbcon may not bind and the screen stays black).
+    "console=tty0"
     "fbcon=rotate:1"
     "systemd.show_status=yes"
-    "loglevel=6"
+    "loglevel=7"
   ];
 
   # No bootloader managed from inside the system: the ESP is populated by
