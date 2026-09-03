@@ -42,37 +42,53 @@
         {
           nativeBuildInputs = with pkgs; [
             e2fsprogs
+            fakeroot
             zstd
           ];
         }
         ''
           set -euo pipefail
           root=$(mktemp -d)
+          export root out IMG="$out/nabu-rootfs.ext4.img" \
+            toplevel="${toplevel}"
+          export rootFsExtraSize="${toString config.nabu.image.rootFsExtraSize}"
 
           echo ">>> importing store closure"
-          mkdir -p "$root/nix/store" "$root/nix/var/nix/profiles" "$root/etc" "$root/boot"
+          mkdir -p \
+            "$root/nix/store" "$root/nix/var/nix/profiles" \
+            "$root/etc" "$root/boot" \
+            "$root/var" "$root/tmp" "$root/home" "$root/root" \
+            "$root/run" "$root/dev" "$root/proc" "$root/sys"
           while read -r storePath; do
             cp -prd "$storePath" "$root/nix/store/"
           done < "${closureInfo}/store-paths"
 
-          echo ">>> creating profile links"
-          ln -sfn ${toplevel} "$root/nix/var/nix/profiles/system-1-link"
-          (cd "$root/nix/var/nix/profiles" && ln -sfn system-1-link system)
+          # -> Under fakeroot so mke2fs records root:root ownership (mirrors
+          #    nixpkgs sd-image).  Without this, an unprivileged build leaves
+          #    the whole tree owned by the builder uid (e.g. 30001), breaking
+          #    setuid binaries and producing a non-standard rootfs.
+          fakeroot bash -c '
+            set -euo pipefail
 
-          echo ">>> /init -> toplevel/init"
-          ln -sfn "${toplevel}/init" "$root/init"
+            echo ">>> creating profile links"
+            ln -sfn "$toplevel" "$root/nix/var/nix/profiles/system-1-link"
+            (cd "$root/nix/var/nix/profiles" && ln -sfn system-1-link system)
 
-          # mark first boot for activation machinery
-          touch "$root/etc/NIXOS"
+            echo ">>> /init -> toplevel/init"
+            ln -sfn "$toplevel/init" "$root/init"
+            touch "$root/etc/NIXOS"
 
-          echo ">>> building ext4 image (mke2fs -d, unprivileged)"
-          TOTAL_MB=$(( $(du -sm --apparent-size "$root" | cut -f1) + ${toString config.nabu.image.rootFsExtraSize} ))
-          IMG="$out/nabu-rootfs.ext4.img"
-          mkdir -p "$out"
-          echo "image size: ''${TOTAL_MB} MiB"
-          mke2fs -t ext4 -L nixos -d "$root" \
-            -E lazy_itable_init=0,lazy_journal_init=0 \
-            "$IMG" "''${TOTAL_MB}m"
+            echo ">>> normalizing ownership to root:root"
+            chown -R 0:0 "$root"
+
+            echo ">>> building ext4 image (mke2fs -d, under fakeroot)"
+            TOTAL_MB=$(( $(du -sm --apparent-size "$root" | cut -f1) + rootFsExtraSize ))
+            mkdir -p "$out"
+            echo "image size: $TOTAL_MB MiB"
+            mke2fs -t ext4 -L nixos -d "$root" \
+              -E lazy_itable_init=0,lazy_journal_init=0 \
+              "$IMG" "$TOTAL_MB"m
+          '
 
           ${
             if config.nabu.image.compress then
@@ -85,6 +101,10 @@
           }
 
           ls -la "$out"
+
+          # copied store paths are read-only; make them writable before cleanup
+          # or rm -rf fails with Permission denied (image itself is done here)
+          chmod -R u+w "$root"
           rm -rf "$root"
         '';
   };

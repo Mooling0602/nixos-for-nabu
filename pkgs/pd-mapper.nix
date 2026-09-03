@@ -2,10 +2,8 @@
   lib,
   stdenv,
   fetchFromGitHub,
-  meson,
-  ninja,
-  pkg-config,
   qrtr,
+  xz,
 }:
 
 stdenv.mkDerivation (finalAttrs: {
@@ -16,15 +14,27 @@ stdenv.mkDerivation (finalAttrs: {
     owner = "andersson";
     repo = "pd-mapper";
     rev = "5ecd2fe926aca7abfe40724177f63b942cff3947";
-    hash = "sha256-ty1Nj80DkbvJuDV3h/D1VZSMYzjSqgOqBf/6pcag7Zw=";
+    hash = "sha256-I5/N24KONtNRSub00Mqh1GoMHO2qQKTj/ts2N6DQdPc=";
   };
 
-  nativeBuildInputs = [
-    meson
-    ninja
-    pkg-config
-  ];
-  buildInputs = [ qrtr ];
+  # Upstream ships a plain Makefile (no meson/cmake): `make` compiles the
+  # binary and links -lqrtr -llzma; `make install prefix=…` installs the
+  # binary and the reference systemd unit.
+  buildInputs = [ qrtr xz ];
+
+  dontConfigure = true;
+
+  buildPhase = ''
+    runHook preBuild
+    make
+    runHook postBuild
+  '';
+
+  installPhase = ''
+    runHook preInstall
+    make install prefix=$out
+    runHook postInstall
+  '';
 
   strictDeps = true;
 

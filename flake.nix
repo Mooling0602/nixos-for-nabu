@@ -37,8 +37,16 @@
           pname = "nabu-uki";
           version = kernelVersion;
 
-          passAsFile = [ "cmdlineText" ];
+          passAsFile = [ "cmdlineText" "osReleaseText" ];
           cmdlineText = cmdline;
+          # ukify defaults to reading /usr/lib/os-release, which does not exist
+          # in the build environment (nixos/nix container); provide one
+          # explicitly so the UKI .osrel section can be populated.
+          osReleaseText = ''
+            ID=nixos
+            NAME="NixOS"
+            PRETTY_NAME="NixOS ${kernelVersion} (Xiaomi Pad 5 / nabu)"
+          '';
 
           nativeBuildInputs = [
             (pkgs.systemd.override { withUkify = true; })
@@ -48,6 +56,9 @@
 
           buildCommand = ''
             set -euo pipefail
+
+            # nix does not pre-create output dirs; ukify needs $out to exist
+            mkdir -p "$out"
 
             kernel="${kernel}"
             echo ">>> kernel store path: $kernel"
@@ -81,6 +92,7 @@
               --initrd="${initrd}/initrd" \
               --devicetree="$DTB" \
               --cmdline="$CMDLINE" \
+              --os-release="@$osReleaseTextPath" \
               --stub="$stub" \
               --output="$out/nabu-${kernelVersion}.efi"
 

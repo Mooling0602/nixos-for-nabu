@@ -1,4 +1,6 @@
-# Base NixOS configuration for Xiaomi Pad 5 (nabu).
+# Minimal NixOS configuration for Xiaomi Pad 5 (nabu).
+# Desktop environment, input methods, fonts etc. are intentionally left out —
+# configure them yourself on the running system.
 {
   config,
   pkgs,
@@ -28,6 +30,9 @@
     initialPassword = "nabu";
   };
 
+  # Minimal image (no DE): drop straight into a tty as $USER automatically.
+  services.getty.autologinUser = "nabu";
+
   # == Nix ====================================================================
   nix.settings.experimental-features = [
     "nix-command"
@@ -48,42 +53,22 @@
     LC_TELEPHONE = "zh_CN.UTF-8";
     LC_TIME = "zh_CN.UTF-8";
   };
-  i18n.inputMethod = {
-    enable = true;
-    type = "fcitx5";
-    fcitx5.waylandFrontend = true;
-    fcitx5.addons = with pkgs; [
-      fcitx5-chinese-addons
-      fcitx5-gtk
-      fcitx5-qt
-    ];
-  };
+  # Note: no i18n.inputMethod here — add fcitx5 + addons yourself later.
 
-  # == Console / fonts ========================================================
+  # == Console font (TTY only; no desktop fonts) ==============================
   console = {
     earlySetup = true;
     font = "ter-132n";
     packages = [ pkgs.terminus_font ];
   };
-  fonts.packages = with pkgs; [
-    noto-fonts
-    noto-fonts-cjk-sans
-    noto-fonts-emoji
-    nerd-fonts.terminus
-  ];
 
-  # == Essentials =============================================================
+  # == Minimal essentials ======================================================
   environment.systemPackages = with pkgs; [
     vim
     nano
     git
     usbutils
     alsa-utils
-    networkmanagerapplet
-    # Qualcomm debugging
-    qrtr
-    pd-mapper
-    rmtfs
   ];
 
   services.openssh = {
@@ -94,8 +79,12 @@
     };
   };
 
-  # Auto-grow rootfs partition on first boot (image ships minimized)
+  # Auto-grow rootfs on first boot (image ships minimized)
   boot.growPartition = true;
+
+  # Produce an uncompressed raw ext4 .img — directly flashable via
+  # `fastboot flash linux nabu-rootfs.ext4.img`
+  nabu.image.compress = false;
 
   # Tablet-friendly: power button suspends
   services.logind.settings.Login.HandlePowerKey = "suspend";

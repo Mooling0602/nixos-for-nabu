@@ -20,15 +20,15 @@
 
   # == Kernel =================================================================
   boot.kernelPackages = pkgs.linuxKernel.packagesFor pkgs.kernel-sm8150;
+  # No `quiet`: let kernel/systemd messages scroll on the console.
   boot.kernelParams = [
     "root=PARTLABEL=linux"
     "rw"
-    "quiet"
     "systemd.gpt_auto=no"
     "cryptomgr.notests"
     "fbcon=rotate:1"
-    "systemd.show_status=auto"
-    "loglevel=3"
+    "systemd.show_status=yes"
+    "loglevel=6"
   ];
 
   # No bootloader managed from inside the system: the ESP is populated by
