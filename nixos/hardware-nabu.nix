@@ -35,6 +35,12 @@
     "loglevel=7"
   ];
 
+  # Boot splash: the nabu DTB has no simple-framebuffer node, so the panel
+  # only comes up via the MSM DRM stack. The reference (nabu_fedora) ships
+  # plymouth in the initrd (hostonly=no) to light the panel early. We keep
+  # console=tty0 + loglevel=7 above so a failure still leaves text on screen.
+  boot.plymouth.enable = true;
+
   # No bootloader managed from inside the system: the ESP is populated by
   # rEFInd + our UKI artifact (see packages.nabu-uki), built off-device.
   boot.loader.external = {
@@ -53,6 +59,14 @@
     "ufshcd_pltfrm"
     "ufshcd_core"
     "ufshcd_pci"
+    # Early display stack: no simple-framebuffer node, the panel is driven by
+    # the MSM/KMS DRM driver, so it must be present in the initramfs for
+    # plymouth/fbcon to light the screen before the rootfs is mounted.
+    "drm"
+    "drm_kms_helper"
+    "msm"
+    "panel_novatek_nt36523"
+    "backlight_ktz8866"
   ];
   boot.initrd.kernelModules = [
     "ufs_qcom"
