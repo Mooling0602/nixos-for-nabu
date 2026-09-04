@@ -158,6 +158,11 @@
             nabu-uki = ukiFromConfig cfg pkgs;
             # kernel alone (use .configfile passthru to inspect the config)
             nabu-kernel = cfg.system.build.kernel;
+            # Flashable ext4 rootfs image (cross-built: buildPlatform = system,
+            # hostPlatform = aarch64). The nixosConfigurations.nabu entry has
+            # buildPlatform = aarch64, which is wrong/impractical on an x86_64
+            # host — so build rootfs via the cross config, like nabu-uki.
+            nabu-rootfs = cfg.system.build.rootfs-image;
             default = self.packages.${system}.nabu-uki;
           }
         );
