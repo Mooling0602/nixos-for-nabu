@@ -62,11 +62,10 @@
     # Early display stack: no simple-framebuffer node, the panel is driven by
     # the MSM/KMS DRM driver, so it must be present in the initramfs for
     # plymouth/fbcon to light the screen before the rootfs is mounted.
-    "drm"
-    "drm_kms_helper"
-    "msm"
+    # DRM_MSM is builtin (=y), so only the panel/backlight are real modules;
+    # ktz8866 is the actual backlight module name (not backlight_ktz8866).
     "panel_novatek_nt36523"
-    "backlight_ktz8866"
+    "ktz8866"
   ];
   boot.initrd.kernelModules = [
     "ufs_qcom"
