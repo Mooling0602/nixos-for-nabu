@@ -11,14 +11,15 @@ UEFI 固件（Project Aloha / DBKP）
   └─ rEFInd（ESP 分区）
        └─ nabu-<version>.efi   ← 本 flake 构建的 Unified Kernel Image
             ├─ Linux 6.17（sm8150-mainline + nabu 驱动）
-            ├─ initramfs（通用镜像，强制包含 UFS 驱动）
+            ├─ initramfs（基于 systemd，强制包含 UFS 驱动）
             ├─ sm8150-xiaomi-nabu.dtb
-            └─ cmdline: root=PARTLABEL=linux ...
-                  └─ `linux` 分区上的 ext4 根文件系统
+            └─ cmdline: init=<closure>/init rw console=tty0 ...
+                  └─ `linux` 分区上的 ext4 根文件系统（PARTLABEL=linux）
 ```
 
 * **内核**：来自 [sm8150-mainline](https://gitlab.com/sm8150-mainline/linux) 项目的 mainline 6.17，配置片段与参考 Fedora 构建一致。
 * **UKI 产物**：单个 `.efi` 文件，直接放进现有 ESP（`EFI/nixos/`）即可，rEFInd 自动识别 —— 不动 rootfs 就能测试新内核。
+* **Rootfs 产物**：可刷写的 ext4 镜像（`nabu-rootfs`），内含 NixOS store 闭包；首次启动自动完成系统激活，并把文件系统扩容到整个分区。
 * **高通用户态服务**：`qrtr` / `pd-mapper` / `rmtfs` / `tqftpserv` / `q6voiced`，四扬声器 ALSA UCM 配置，pm8150 RTC udev 规则，ath10k 热重启规避。
 * **固件**：可再分发的高通固件（`hardware.enableRedistributableFirmware`）+ 设备专属文件（adsp/modem/venus/cirrus/novatek，来自 postmarketOS 固件仓库）。
 
@@ -27,15 +28,21 @@ UEFI 固件（Project Aloha / DBKP）
 任何装了 Nix（启用 flakes）的 Linux 机器：
 
 ```Shell
-# EFI 内核镜像（x86_64 上可交叉编译）
+# UKI：EFI 内核镜像（x86_64 交叉编译，无需 binfmt）
 nix build .#nabu-uki
 # → result/nabu-<version>.efi
+
+# Rootfs：可刷写 ext4 镜像（fakeroot 无特权交叉构建，无需 binfmt）
+nix build .#nabu-rootfs
+# → result/nabu-rootfs.ext4.img[.zst]
 ```
 
-> [!TIP]
-> 完整 rootfs 镜像需要 aarch64 构建机或 binfmt 模拟；UKI 本身在 x86_64 上交叉编译没有问题。
+> [!IMPORTANT]
+> UKI 和 rootfs 必须在**同一提交一次性构建** —— UKI 的 `init=` 内核参数
+> 必须指向 rootfs 里那个确切的 NixOS 闭包。两者不配对会无法启动
+> （initrd 落入 emergency mode）。
 
-## 在设备上测试（已装 Android/Fedora 双系统）
+## 在设备上测试
 
 1. 把 UKI 复制进 ESP：
    ```Shell
@@ -44,16 +51,17 @@ nix build .#nabu-uki
    sudo cp result/nabu-*.efi /boot/efi/EFI/nixos/
    ```
    （也可以在 PC 上挂载 ESP 分区复制）
-2. 重启，在 rEFInd 里选择 `nabu` 启动项。
-3. 完整启动需要 `linux` 分区上有最小的 NixOS rootfs —— 见下方 *进度*。
+2. 把 rootfs 镜像刷入 `linux` 分区（PARTLABEL=linux）—— 刷入步骤与首启预期见 [docs/testing-uki.md](docs/testing-uki.md)。
+3. 重启，在 rEFInd 里选择 `nabu` 启动项。
 
 ## 进度
 
-- [x] Flake 骨架：`nixosConfigurations.nabu`、可交叉构建的 UKI 产物
+- [x] Flake 骨架：`nixosConfigurations.nabu`、可交叉构建的 `nabu-uki` / `nabu-rootfs` 产物
 - [x] 内核 6.17.0-sm8150 打包（片段合并配置，可复现）
 - [x] 设备软件包：`pd-mapper`、`xiaomi-nabu-firmware`、ALSA UCM
 - [x] NixOS 配置中的高通服务栈
-- [ ] 可刷写的 ext4 rootfs 镜像（`scripts/build-image.sh`）
+- [x] 可刷写 ext4 rootfs 镜像（fakeroot 无特权交叉构建）
+- [x] 启动链已在 QEMU 验证（initrd → switch-root → 激活 → 自动登录）
 - [ ] 首次真机启动
 - [ ] CI（GitHub Actions）构建
 - [ ] 桌面环境变体（niri/GNOME/KDE）

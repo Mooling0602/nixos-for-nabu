@@ -1,53 +1,65 @@
-# 在设备上测试 UKI（小米平板 5 / nabu）
+# 测试与刷入指南（小米平板 5 / nabu）
 
-适用于设备上已有 nabu_fedora 双系统环境（UEFI + DBKP + rEFInd 已就位）的场景。
+前置条件：设备已解锁 BL、刷好 DBKP、ESP 分区就位（rEFInd 可见）。
 
-## 前置条件
+> 两种产物必须同源构建：UKI 的 `init=` 参数指向 rootfs 内的 NixOS 闭包，
+> 不配对会卡在 initrd emergency mode（见 README 的 IMPORTANT 提示）。
 
-- 平板已解锁 BootLoader、已刷 DBKP、esp 分区已存在（rEFInd 引导菜单能看到）
-- PC 上有 `adb`/`fastboot`（或平板上已运行任意 Linux）
+## 1. 刷入 rootfs
 
-## 方式一：在平板上的 Linux 系统里直接复制（推荐）
+`nix build .#nabu-rootfs` 产出的 `nabu-rootfs.ext4.img[.zst]` 刷入 `linux`
+分区（PARTLABEL=linux，勿刷 esp）。压缩版先 `zstd -d` 解压。
 
 ```Shell
-# PC: 把构建产物传到平板（假设平板 Linux 已通过 USB 网络或 adb 可达）
-adb push result/nabu-*.efi /tmp/
+# 在设备已运行的 Linux 里（分区名以 lsblk 为准，nabu 上通常 sda 整盘）：
+sudo zstd -d nabu-rootfs.ext4.img.zst          # 若为压缩产物
+sudo dd if=nabu-rootfs.ext4.img of=/dev/sdXN bs=4M status=progress oflag=direct
+```
 
-# 平板: 复制到 ESP
+## 2. 部署 UKI 到 ESP
+
+```Shell
 sudo mkdir -p /boot/efi/EFI/nixos
-sudo cp /tmp/nabu-*.efi /boot/efi/EFI/nixos/
+sudo cp result/nabu-*.efi /boot/efi/EFI/nixos/
 ```
 
-## 方式二：在 PC 上挂载 ESP 复制
+（或在 PC 上挂载 ESP 复制；旧版 `.efi` 记得替换，避免混用不配对的产物）
 
-```Shell
-# 平板进入 TWRP/自建 Linux 后挂载 esp 分区，或用 fastboot 侧工具
-# esp 分区一般在 /dev/block/sda21 附近（分区表里 PARTLABEL=esp）
-```
+## 3. 启动判定
 
-## 启动测试
+重启 → rEFInd → 选择 `nabu-*.efi`。
 
-1. 重启平板，出现 rEFInd 菜单
-2. rEFInd 会自动扫描 ESP 上的 `.efi`；选择 **nabu-6.17.0-sm8150.efi**
-3. 观察：
-   - 屏幕出现内核启动画面（fbcon=rotate:1 横屏控制台）= UKI 结构正确
-   - 若 rootfs（`linux` 分区）不是 NixOS，会在挂载 root 后失败/进入紧急 shell——
-     这是预期：**UKI 本身能被 UEFI 加载并解压内核，即证明 EFI 格式正确**
-
-## 判定标准
+预期流程：plymouth splash → `console=tty0` 内核日志（loglevel=7 早期详细，
+后期降为 4）→ NixOS activation（首次启动自动完成 /etc、用户、服务初始化，
+并自动扩容 rootfs 填满分区）→ getty 直登 `nabu` 用户。
 
 | 现象 | 含义 |
 |------|------|
 | rEFInd 能列出 nabu-*.efi | UKI 是合法 EFI PE 二进制 ✅ |
 | 选择后屏幕有显示输出（哪怕花屏/旋转异常） | 内核+DTB 被正确加载执行 ✅ |
-| 串口/adb 无输出但设备不重启 | 内核早期挂了，需查 cmdline/DTB |
-| 设备瞬间重启回 rEFInd | EFI stub 或签名问题 |
+| 卡 plymouth / 黑屏但有背光 | initrd 或显示栈问题，见下节排查 |
+| initrd 报 "No init= parameter" 或进 emergency shell | UKI 与 rootfs 不配对，重新同源构建 |
+| 瞬间重启回 rEFInd | EFI stub 问题 |
 
-## 完整启动（rootfs 就绪后）
+## 4. 排查工具
 
-刷入 rootfs 镜像后，UKI 的 `root=PARTLABEL=linux` 会挂载 ext4 根分区，
-进入 NixOS activation（首次开机自动完成 /etc、用户、服务等初始化）。
+- **QEMU 冒烟测试**（强烈建议刷机前先做）：需要 aarch64 主机或已缓存的
+  内核产物。参考测试仓库思路：变体 UKI（不嵌 DTB、`console=ttyAMA0`）、
+  GPT 测试盘（esp+linux 分区名与真机一致）、`qemu-system-aarch64 -M virt`
+  TCG 运行，串口日志可直接看到 initrd → switch-root → activation 全链路。
+  两个已知的 initrd 启动 bug（root= 冲突、缺 init= 参数）就是这么发现的。
+- **真机黑屏时**：cmdline 已带 `console=tty0` + `loglevel=7`，早期内核日志
+  会滚在屏幕上，拍照即可定位卡点。
+- 系统启动后 `journalctl -b` 查看本次启动日志。
+
+## 5. 日常更新
+
+改配置/内核后：
 
 ```Shell
-# 之后的系统更新：重新构建 UKI + rootfs 内 toplevel，替换 ESP 上的 .efi 即可
+nix build .#nabu-uki .#nabu-rootfs   # 同一次构建
+sudo cp result-*/nabu-*.efi /boot/efi/EFI/nixos/   # 替换 ESP 上的 UKI
 ```
+
+rootfs 更新可整体重刷；或后续改用 `nixos-rebuild --target-host` 推送
+（当前最小 rootfs 未启用 SSH，重刷更简单）。
