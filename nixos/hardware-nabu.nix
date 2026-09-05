@@ -22,7 +22,6 @@
   boot.kernelPackages = pkgs.linuxKernel.packagesFor pkgs.kernel-sm8150;
   # No `quiet`: let kernel/systemd messages scroll on the console.
   boot.kernelParams = [
-    "root=PARTLABEL=linux"
     "rw"
     "systemd.gpt_auto=no"
     "cryptomgr.notests"
