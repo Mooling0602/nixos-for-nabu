@@ -114,7 +114,13 @@
           inherit pkgs;
           kernel = cfg.system.build.kernel;
           initrd = cfg.system.build.initialRamdisk;
-          cmdline = lib.concatStringsSep " " cfg.boot.kernelParams;
+          # systemd initrd's initrd-find-nixos-closure.service requires the
+          # closure's init path on the kernel command line (mirrors nixpkgs'
+          # boot.uki module, which prepends exactly this). Without it stage 1
+          # fails with "No init= parameter" and drops to emergency mode.
+          cmdline =
+            "init=${cfg.system.build.toplevel}/init "
+            + lib.concatStringsSep " " cfg.boot.kernelParams;
           # aarch64 stub source: native on aarch64 hosts, cross on x86_64
           targetPkgs =
             if pkgs.stdenv.hostPlatform.isAarch64 then pkgs else pkgs.pkgsCross.aarch64-multiplatform;
